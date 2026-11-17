@@ -70,15 +70,31 @@ achievementList.push(['✧','Aether pioneer',state.completed.length===3]);
 document.getElementById('badges').innerHTML=achievementList.map(b=>`<div class="badge ${b[2]?'earned':''}">${b[0]} ${b[1]} ${b[2]?'✓':'· locked'}</div>`).join('');renderZones();}
 function renderZones(){document.getElementById('zoneCards').innerHTML=modules.map(m=>{let count=questionCount(m.id),done=count===9;return `<article class="zone" style="--glow:${m.color}"><div class="symbol" style="color:${m.color}">${m.icon}</div><h3>${m.name}</h3><p>${m.desc}</p><div class="progress"><i style="width:${count/9*100}%"></i></div><small>${done?'MASTERED · 9/9':count+' / 9 QUESTIONS · '+(count<3?'BEGINNER':count<6?'INTERMEDIATE':'EXPERT')}</small><br><button data-zone="${m.id}">${done?'Review module':'Continue · '+count+'/9'}</button></article>`}).join('');document.querySelectorAll('[data-zone]').forEach(b=>b.onclick=()=>showLesson(b.dataset.zone));}
 function renderLessons(){document.getElementById('lessonList').innerHTML=modules.map(m=>{let count=questionCount(m.id),done=count===9;return `<article class="card lesson"><div><div class="eyebrow" style="color:${m.color}">${m.tag}</div><h3>${m.icon} ${m.name} ${done?'✓':''}</h3><p>${m.desc}<br><strong style="color:var(--cyan)">${count}/9 questions complete · ${done?'Mastered':count<3?'Beginner round':count<6?'Intermediate round':'Expert round'}</strong></p><div class="progress" style="max-width:260px"><i style="width:${count/9*100}%"></i></div></div><button class="ghost" data-lesson="${m.id}">${done?'Review':'Continue'}</button></article>`}).join('');document.querySelectorAll('[data-lesson]').forEach(b=>b.onclick=()=>showLesson(b.dataset.lesson));}
-function showLesson(id){let m=modules.find(x=>x.id===id);let count=questionCount(id);let index=Math.min(count,8);let q=m.questions[index];let stage=index<3?'BEGINNER':index<6?'INTERMEDIATE':'EXPERT';document.getElementById('quizEyebrow').textContent=m.tag+' · '+stage+' ROUND';document.getElementById('quizTitle').textContent=m.name+' — '+(count===9?'MASTERED':'Question '+(index+1)+' of 9');document.getElementById('quizQuestion').textContent=m.lesson+'\n\n'+q.q;let a=document.getElementById('answers');a.innerHTML='';// Keep distractors visually substantial so the correct answer is not the obvious longest option.
+function showLesson(id){let m=modules.find(x=>x.id===id);let count=questionCount(id);let index=Math.min(count,8);let q=m.questions[index];let stage=index<3?'BEGINNER':index<6?'INTERMEDIATE':'EXPERT';document.getElementById('quizEyebrow').textContent=m.tag+' · '+stage+' ROUND';document.getElementById('quizTitle').textContent=m.name+' — '+(count===9?'MASTERED':'Question '+(index+1)+' of 9');document.getElementById('quizQuestion').textContent=m.lesson+'\n\n'+q.q;let a=document.getElementById('answers');a.innerHTML='';// Give every answer choice the same word count within its question.
+// Neutral context phrases balance visual length without changing the answer's meaning.
 let choices=q.answers.map((text,originalIndex)=>({text,isCorrect:originalIndex===q.correct}));
-const correctLength=choices[q.correct].text.length;
-const distractorTail=' This choice still needs evidence that directly supports the conclusion in the situation described.';
-choices=choices.map(choice=>{
-  if(choice.isCorrect)return choice;
-  let balanced=choice.text;
-  while(balanced.length<=correctLength) balanced+=distractorTail;
-  return {...choice,text:balanced};
+const wordCount=text=>(text.trim().match(/\\S+/g)||[]).length;
+const targetWords=Math.max(...choices.map(choice=>wordCount(choice.text)));
+const neutralPhrases=[
+  ['in','this','specific','scenario'],
+  ['given','the','details','provided'],
+  ['for','this','particular','example'],
+  ['within','the','stated','context'],
+  ['based','on','the','situation'],
+  ['as','described','in','the','question']
+];
+choices=choices.map((choice,index)=>{
+  let words=choice.text.trim().split(/\\s+/);
+  let remaining=targetWords-words.length;
+  let phraseIndex=index%neutralPhrases.length;
+  while(remaining>0){
+    const phrase=neutralPhrases[phraseIndex%neutralPhrases.length];
+    const take=Math.min(remaining,phrase.length);
+    words.push(...phrase.slice(0,take));
+    remaining-=take;
+    phraseIndex++;
+  }
+  return {...choice,text:words.join(' ')};
 }).sort(()=>Math.random()-.5);choices.forEach(({text,isCorrect},i)=>{let b=document.createElement('button');b.textContent=String.fromCharCode(65+i)+'. '+text;b.onclick=()=>{if(state.quizDone.includes(id+'-q'+(index+1))){return}if(isCorrect){b.classList.add('correct');state.quizDone.push(id+'-q'+(index+1));state.xp+=index<3?15:index<6?25:35;save();document.getElementById('feedback').textContent=q.why+(count+1===9?' Zone mastered! All 9 questions complete.':count+1===3?' Beginner round complete! Intermediate questions unlocked.':count+1===6?' Intermediate round complete! Expert questions unlocked.':' Correct — next question unlocked.');renderLessons();renderZones();let nextCount=questionCount(id);if(nextCount===9){toast('ZONE MASTERED · '+m.name+'!')}else{toast('+'+(index<3?15:index<6?25:35)+' XP · '+(nextCount===3?'INTERMEDIATE UNLOCKED':nextCount===6?'EXPERT UNLOCKED':'PROGRESS SAVED'))}Array.from(a.children).forEach(x=>x.disabled=true);let next=document.createElement('button');next.className='primary';next.style.marginTop='8px';next.textContent=nextCount===9?'Zone mastered ✓':'Continue to question '+(nextCount+1)+' →';next.onclick=()=>showLesson(id);a.appendChild(next)}else{b.classList.add('wrong');document.getElementById('feedback').textContent='Not quite. Review the lesson and try again. Incorrect answers do not count toward your 9-question mastery.'}};a.appendChild(b)});document.getElementById('feedback').textContent=count===9?'All 9 questions completed. This zone is mastered. You can review the questions.':'Progress: '+count+'/9 · '+stage+' round';document.getElementById('modal').classList.add('show')}
 function page(p){document.querySelectorAll('.page').forEach(x=>x.classList.toggle('active',x.id===p));document.querySelectorAll('.nav button').forEach(x=>x.classList.toggle('active',x.dataset.page===p));if(p==='game')startLoop()}document.querySelectorAll('[data-page]').forEach(b=>b.onclick=()=>page(b.dataset.page));document.querySelectorAll('[data-goto]').forEach(b=>b.onclick=()=>page(b.dataset.goto));document.getElementById('playBtn').onclick=()=>page('game');document.getElementById('closeModal').onclick=()=>document.getElementById('modal').classList.remove('show');document.getElementById('modal').addEventListener('click',e=>{if(e.target.id==='modal')e.currentTarget.classList.remove('show')});
 // Canvas exploration game
